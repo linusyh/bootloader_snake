@@ -47,10 +47,9 @@ set_timer:
 	;xor al, al				; AL = 0, set interval
 	;mov ah, 0x86			; AH = 0x86 
 	;int 0x15				; wait for 0.10s before releasing continuing
-
 	xor ah, ah
 	int 0x1a				; read system timer counter (18.2 count per sec) 
-	inc dx					; break loop when count = start_count + 1
+	add dx, 2				; break loop when count = start_count + 1
 	mov bx, dx				; save start time
 loop_timer:
 	xor ah, ah
@@ -292,12 +291,11 @@ fn_make_candy:					; function, create candy on a random tile
 	
 
 fn_draw_snake:				; function, arguments 1) Color
-	xchg bx, bx
 	add sp, 2				; skip eip on stack 
 	pop ax					; ax = color
-	sub sp, 8				; save color to the 2nd 16bit slot on top of eip
+	sub sp, 6				; save color to the 2nd 16bit slot on top of eip
 	push ax					; leaving 1 slot for cx
-	add sp, 6				; return to eip
+	add sp, 4				; point sp back to eip
 
 	mov si, 0083h
 	mov ax, [ds:si]			; ax = Length and Direction information, format:[0bLLLL_LLDD]

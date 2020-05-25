@@ -41,11 +41,11 @@ set_timer:
 	mov cx, 0x1
 	mov dx, 0x86A0			; CX:DX = 0x0001:0x86A0 = 100,000μs = 0.1s = 10 frame per second
 		
-	mov bx, 0d64000			; posting byte = ES:BX (0A000h:0d64000) this byte will be updated after 0.1s
+	mov bx, 0d65000			; posting byte = ES:BX (0A000h:0d64000) this byte will be updated after 0.1s
 	mov BYTE [es:bx], 0x00	; clear the posted byte for detection
 	
 	xor al, al				; AL = 0, set interval
-	mov ah, 0x83			; AH = 0x83 
+	mov ah, 0x86			; AH = 0x86 
 	int 0x15				; wait for 0.10s before releasing continuing
 	
 	; refer to label "read_timer" for codes detecting the change in ES:BX
@@ -280,11 +280,12 @@ draw_snake:
 		pop cx
 	loop loop_block
 	
-read_timer:	
-	mov si, 0d64000
-	mov al, [es:si]
-	cmp al, 0x00
-	je read_timer			; test again
+read_timer:
+	
+;	mov si, 0d65000
+;	mov al, [es:si]
+;	cmp al, 0x00
+;	je read_timer			; test again
 	jmp game_loop			; restart loop
 
 ; =========
@@ -318,7 +319,7 @@ draw_block: 				; draw a 10x10 snake block from (x,y) to (x+9, y+9)
 		
 	pop ax
 	xor ah, ah				; all value lies within al
-	mov cx, 3200			; screen is 320 pixels wide
+	mov cx, 0d3200			; screen is 320 pixels wide
 	mul cx					; screen pixel index calculation
 	add ax, bx				; ax = 320 * ax + bx
 	

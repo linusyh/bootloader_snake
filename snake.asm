@@ -28,7 +28,7 @@ make_snake:					; create a snake for the first run
 	mov BYTE [0x80], 0d15
 	mov BYTE [0x7f], 0d09
 	
-	call make_candy			; make a candy
+	call fn_make_candy			; make a candy
 
 ; ==============
 ; main game loop
@@ -38,23 +38,34 @@ game_loop:
 set_timer:
 	; uses Int15/AH=83h for time keeping 
 	; for more details: http://www.oldlinux.org/Linux.old/docs/interrupts/int-html/rb-1512.htm
-	mov cx, 0x1
-	mov dx, 0x86A0			; CX:DX = 0x0001:0x86A0 = 100,000μs = 0.1s = 10 frame per second
+	;mov cx, 0x0003
+	;mov dx, 0x0D40			; CX:DX = 0x0001:0x86A0 = 100,000μs = 0.1s = 10 frame per second
 		
-	mov bx, 0d65000			; posting byte = ES:BX (0A000h:0d64000) this byte will be updated after 0.1s
-	mov BYTE [es:bx], 0x00	; clear the posted byte for detection
-	
-	xor al, al				; AL = 0, set interval
-	mov ah, 0x86			; AH = 0x86 
-	int 0x15				; wait for 0.10s before releasing continuing
+	;mov bx, 0d65000			; posting byte = ES:BX (0A000h:0d64000) this byte will be updated after 0.1s
+	;mov BYTE [es:bx], 0x00	; clear the posted byte for detection
+	;
+	;xor al, al				; AL = 0, set interval
+	;mov ah, 0x86			; AH = 0x86 
+	;int 0x15				; wait for 0.10s before releasing continuing
+
+	xor ah, ah
+	int 0x1a				; read system timer counter (18.2 count per sec) 
+	inc dx					; break loop when count = start_count + 1
+	mov bx, dx				; save start time
+loop_timer:
+	xor ah, ah
+	int 0x1a
+	cmp bx, dx
+	jne loop_timer
+
 	
 	; refer to label "read_timer" for codes detecting the change in ES:BX
 	
 clear_screen:
-	mov cx, 0d64000
-	mov di, 0x00
-	xor ax, ax
-	rep stosb
+	mov ax, 0				
+	push ax					; argument: color = black
+	call fn_draw_snake
+	add sp, 2 
 	
 	; int 16h, 01h: http://vitaly_filatov.tripod.com/ng/asm/asm_027.2.html
 check_input:
@@ -231,7 +242,7 @@ ate_candy:
 	jc	victory 
 grow:
 	mov [ds:si], al			; write the increased length to memory
-	call make_candy			; generate a new candy
+	call fn_make_candy			; generate a new candy
 	
 draw_candy: 
 	mov si, 0081h			; y-coordinate
@@ -240,45 +251,19 @@ draw_candy:
 	lodsb					
 	
 	mov cx, 10		
-	push cx					; 3rd argument: color (10)	
+	push cx					; 1st argument: color
 	push bx					; 2nd argument: y
-	push ax					; 1st argument: x
+	push ax					; 3rd argument: x
 	
-	call draw_block
+	call fn_draw_block
 	
 	add sp, 6				; remove arguments from stack
 			
-draw_snake:	
-	mov si, 0083h
-	mov ax, [ds:si]			; ax = Length and Direction information, format:[0bLLLL_LLDD]
-	shr ax, 2				; shift right by 2 bits, result: ax = 0b00LL_LLLL
-	mov cx, ax
-	xor ch, ch				; clear higher bits, not needed
-	
-	mov si, 0080h			; initial offset from memory is 3 for the first 3 bytes are used 
-	
-	; reserved information: cx = length of snake (decreasing every loop), di = memeory offset
-	
-	loop_block:
-		push cx
-		
-		mov al, [ds:si]		; x-coordinate of the snake block (0-31)
-		mov bx, ax			; bx = x
-		
-		dec si
-		mov al, [ds:si]		; y-coordinate of the snake block (0-19), ax = y
-		dec si				; next byte (for the next loop)
-				
-		mov cx, 7
-		push cx				; 3rd parameter: color (7)
-		push ax				; 2nd parameter: y
-		push bx				; 1st parameter: x
-		
-		call draw_block
-		add sp, 6			; remove the function arguments
-		
-		pop cx
-	loop loop_block
+draw_snake:
+	mov ax, 7				
+	push ax					; argument: color
+	call fn_draw_snake
+	add sp, 2 
 	
 read_timer:
 	
@@ -292,7 +277,7 @@ read_timer:
 ; FUNCTIONS
 ; =========	
 
-make_candy:					; function, create candy on a random tile
+fn_make_candy:					; function, create candy on a random tile
 	in al, (0x40)			; generate a "random" number
 	and ax, 31d				; 0 < ax < 31
 	mov di, 0082h
@@ -305,34 +290,72 @@ make_candy:					; function, create candy on a random tile
 	mov [ds:di], al			; save y-coordinate of candy
 	ret
 	
+
+fn_draw_snake:				; function, arguments 1) Color
+	xchg bx, bx
+	add sp, 2				; skip eip on stack 
+	pop ax					; ax = color
+	sub sp, 8				; save color to the 2nd 16bit slot on top of eip
+	push ax					; leaving 1 slot for cx
+	add sp, 6				; return to eip
+
+	mov si, 0083h
+	mov ax, [ds:si]			; ax = Length and Direction information, format:[0bLLLL_LLDD]
+	shr ax, 2				; shift right by 2 bits, result: ax = 0b00LL_LLLL
+	mov cx, ax				; cx = length of snake = number of blocks to draw
+	xor ch, ch				; clear higher bits, not needed
 	
-draw_block: 				; draw a 10x10 snake block from (x,y) to (x+9, y+9)
-							; arguments: 1) X-coord, 2) Y-coord, 3) color
-	mov bp, sp
+	mov si, 0080h			; initial offset from memory is 3 for the first 3 bytes are used 
+	
+	; reserved information: cx = length of snake (decreasing every loop), di = memeory offset
+	
+
+	loop_block:
+		push cx
+		sub sp, 2			; skip saved color value, 1st paramter: color
+		
+		mov al, [ds:si]		; x-coordinate of the snake block (0-31)
+		mov bx, ax			; bx = x
+		
+		dec si
+		mov al, [ds:si]		; y-coordinate of the snake block (0-19), ax = y
+		dec si				; next byte (for the next loop)
+				
+		push ax				; 2nd parameter: y
+		push bx				; 3rd parameter: x
+		
+		call fn_draw_block
+		add sp, 6			; remove the function arguments
+		
+		pop cx
+	loop loop_block
+	ret
+
+	
+fn_draw_block: 				; draw a 10x10 snake block from (x,y) to (x+9, y+9)
+							; arguments: 1) Color 2) Y-coord 3) X-coord
+	; OPT mov bp, sp
 	add sp, 2 				; skip EIP at top of stack (Apparently 4 Bytes)
 	pop ax					; x-coordinate, sp += 2
-	xor ah, ah
+	; OPT xor ah, ah
 	; calculate pixel coordinate
 	mov cl, 10
 	mul cl
-	mov bx, ax				; bx = x pixel coord
+	mov bx, ax				; bx = x-coordinate * 10 = pixel x-coordinate
 		
 	pop ax
 	xor ah, ah				; all value lies within al
 	mov cx, 0d3200			; screen is 320 pixels wide
 	mul cx					; screen pixel index calculation
-	add ax, bx				; ax = 320 * ax + bx
-	
-	mov di, ax
+	add ax, bx				; ax = 320 * ax + bx = offset in video memory to start drawing
+	mov di, ax				; save offset
 	
 	pop ax					; color, sp += 2
-	
 	mov cx, 10				; draw 10 lines
 	
 	draw_block_outer_loop:
 		mov bx, cx			; save outer loop counter
 		mov cx, 10			; set innter loop counter, draw 10 pixels in a roll
-		
 		rep
 		stosb 
 			
@@ -340,7 +363,8 @@ draw_block: 				; draw a 10x10 snake block from (x,y) to (x+9, y+9)
 		mov cx, bx			; retrieve outer loop counter
 		loop draw_block_outer_loop
 	
-	mov sp, bp				; point top of stack at EIP so that we can return to the main process
+	; OPT mov sp, bp				; point top of stack at EIP so that we can return to the main process
+	sub sp, 8
 	ret
 	
 game_over:
